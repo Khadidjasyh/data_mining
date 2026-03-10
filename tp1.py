@@ -1,0 +1,224 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import os
+
+# Configuration pour un meilleur affichage
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+
+print("=" * 80)
+print("TP N°1 - Fouille de données")
+print("=" * 80)
+
+# Fonction pour analyser un dataset
+def analyser_dataset(df, nom_dataset):
+    print(f"\n\n{'='*60}")
+    print(f"ANALYSE DU DATASET : {nom_dataset}")
+    print(f"{'='*60}")
+    
+    # 1. Informations de base
+    print("\n1. INFORMATIONS DE BASE:")
+    print(f"   - Nombre d'instances (lignes) : {df.shape[0]}")
+    print(f"   - Nombre d'attributs (colonnes) : {df.shape[1]}")
+    print(f"   - Noms des attributs : {list(df.columns)}")
+    print("\n   Types des attributs :")
+    for col, dtype in df.dtypes.items():
+        print(f"   - {col}: {dtype}")
+    
+    # Sélectionner uniquement les colonnes numériques pour les analyses statistiques
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    # 2. Cinq nombres clés pour chaque attribut
+    print("\n2. CINQ NOMBRES CLÉS:")
+    stats_df = pd.DataFrame()
+    for col in numeric_cols:
+        stats_df[col] = [
+            df[col].min(),
+            df[col].quantile(0.25),
+            df[col].median(),
+            df[col].quantile(0.75),
+            df[col].max()
+        ]
+    stats_df.index = ['Minimum', 'Q1', 'Médiane', 'Q3', 'Maximum']
+    print(stats_df.round(2))
+    
+    # 3. Statistiques descriptives
+    print("\n3. STATISTIQUES DESCRIPTIVES:")
+    desc_stats = pd.DataFrame()
+    for col in numeric_cols:
+        mode_val = df[col].mode()
+        mode_str = mode_val.values[0] if not mode_val.empty else 'N/A'
+        desc_stats[col] = [
+            mode_str,
+            df[col].mean(),
+            df[col].median()
+        ]
+    desc_stats.index = ['Mode', 'Moyenne', 'Médiane']
+    print(desc_stats.round(2))
+    
+    # 4. Boxplots
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Boxplot standard
+    df[numeric_cols].boxplot(ax=axes[0], rot=45)
+    axes[0].set_title(f'Boxplots - {nom_dataset}')
+    axes[0].set_ylabel('Valeurs')
+    
+    # Boxplot avec gestion des outliers
+    df_normalized = (df[numeric_cols] - df[numeric_cols].min()) / (df[numeric_cols].max() - df[numeric_cols].min())
+    df_normalized.boxplot(ax=axes[1], rot=45)
+    axes[1].set_title(f'Boxplots normalisés - {nom_dataset}')
+    axes[1].set_ylabel('Valeurs normalisées')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    # 5. Scatter plot matrix (limité à 5 colonnes pour éviter la surcharge)
+    if len(numeric_cols) > 5:
+        cols_a_plotter = numeric_cols[:5]  # Prendre les 5 premières colonnes numériques
+    else:
+        cols_a_plotter = numeric_cols
+    
+    if len(cols_a_plotter) >= 2:
+        fig = plt.figure(figsize=(12, 10))
+        pd.plotting.scatter_matrix(df[cols_a_plotter], alpha=0.5, figsize=(12, 12), diagonal='hist')
+        plt.suptitle(f'Scatter Matrix - {nom_dataset}', y=1.02)
+        plt.tight_layout()
+        plt.show()
+    
+    # 6. Gestion des valeurs manquantes
+    print("\n4. VALEURS MANQUANTES:")
+    missing_before = df[numeric_cols].isnull().sum()
+    print("   Valeurs manquantes avant traitement:")
+    for col in numeric_cols:
+        if missing_before[col] > 0:
+            print(f"   - {col}: {missing_before[col]} ({missing_before[col]/len(df)*100:.1f}%)")
+    
+    if missing_before.sum() > 0:
+        print("\n   Traitement des valeurs manquantes (remplacement par la moyenne)...")
+        df_filled = df.copy()
+        for col in numeric_cols:
+            if missing_before[col] > 0:
+                df_filled[col].fillna(df_filled[col].mean(), inplace=True)
+        
+        missing_after = df_filled[numeric_cols].isnull().sum()
+        print("   Valeurs manquantes après traitement:")
+        for col in numeric_cols:
+            if missing_after[col] > 0:
+                print(f"   - {col}: {missing_after[col]}")
+            else:
+                print(f"   - {col}: 0")
+    else:
+        print("   Aucune valeur manquante détectée.")
+        df_filled = df.copy()
+    
+    # 7. Normalisation
+    print("\n5. NORMALISATION:")
+    
+    # Min-Max Normalization
+    scaler_minmax = MinMaxScaler()
+    df_minmax = df_filled.copy()
+    df_minmax[numeric_cols] = scaler_minmax.fit_transform(df_filled[numeric_cols])
+    
+    # Z-score Normalization
+    scaler_standard = StandardScaler()
+    df_standard = df_filled.copy()
+    df_standard[numeric_cols] = scaler_standard.fit_transform(df_filled[numeric_cols])
+    
+    print("\n   Aperçu des données normalisées (Min-Max) - 5 premières lignes:")
+    print(df_minmax[numeric_cols].head().round(3))
+    
+    print("\n   Aperçu des données normalisées (Z-score) - 5 premières lignes:")
+    print(df_standard[numeric_cols].head().round(3))
+    
+    # Visualisation comparative des normalisations
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    
+    # Distribution des données originales
+    df_filled[numeric_cols].hist(ax=axes[0], bins=20, alpha=0.7)
+    axes[0].set_title('Distribution originale')
+    axes[0].set_xlabel('Valeurs')
+    
+    # Distribution Min-Max
+    df_minmax[numeric_cols].hist(ax=axes[1], bins=20, alpha=0.7)
+    axes[1].set_title('Distribution Min-Max')
+    axes[1].set_xlabel('Valeurs normalisées [0,1]')
+    
+    # Distribution Z-score
+    df_standard[numeric_cols].hist(ax=axes[2], bins=20, alpha=0.7)
+    axes[2].set_title('Distribution Z-score')
+    axes[2].set_xlabel('Valeurs standardisées')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    return {
+        'original': df,
+        'filled': df_filled,
+        'minmax': df_minmax,
+        'standard': df_standard
+    }
+
+# Charger les données
+print("\nChargement des fichiers de données...")
+
+# Charger diabetes.csv
+try:
+    diabetes_df = pd.read_csv('/Users/macbok/Desktop/fd_tp/diabetes.csv')
+    print("✓ diabetes.csv chargé avec succès")
+except FileNotFoundError:
+    print("✗ diabetes.csv non trouvé")
+    diabetes_df = None
+
+# Charger heart.csv
+try:
+    heart_df = pd.read_csv('/Users/macbok/Desktop/fd_tp/heart.csv')
+    print("✓ heart.csv chargé avec succès")
+except FileNotFoundError:
+    print("✗ heart.csv non trouvé")
+    heart_df = None
+
+# Analyser les datasets
+resultats = {}
+
+if diabetes_df is not None:
+    # Analyser la colonne Outcome (0 ou 1) pour voir la distribution
+    print("\n" + "="*60)
+    print("INFORMATION SUPPLÉMENTAIRE - DIABETES")
+    print("="*60)
+    print("\nDistribution de la variable cible 'Outcome':")
+    outcome_counts = diabetes_df['Outcome'].value_counts()
+    outcome_percentages = diabetes_df['Outcome'].value_counts(normalize=True) * 100
+    for val in [0, 1]:
+        if val in outcome_counts:
+            print(f"  Outcome {val}: {outcome_counts[val]} patients ({outcome_percentages[val]:.1f}%)")
+    
+    resultats['diabetes'] = analyser_dataset(diabetes_df, 'DIABETES')
+
+if heart_df is not None:
+    print("\n" + "="*60)
+    print("INFORMATION SUPPLÉMENTAIRE - HEART")
+    print("="*60)
+    print("\nDistribution de la variable cible 'output':")
+    output_counts = heart_df['output'].value_counts()
+    output_percentages = heart_df['output'].value_counts(normalize=True) * 100
+    for val in [0, 1]:
+        if val in output_counts:
+            status = "Malade" if val == 1 else "Non malade"
+            print(f"  Output {val} ({status}): {output_counts[val]} patients ({output_percentages[val]:.1f}%)")
+    
+    resultats['heart'] = analyser_dataset(heart_df, 'HEART')
+
+print("\n" + "="*80)
+print("ANALYSE TERMINÉE")
+print("="*80)
+print("\nRésumé des analyses effectuées:")
+print("✓ Informations de base (nombre d'instances, attributs, types)")
+print("✓ Cinq nombres clés (min, Q1, médiane, Q3, max)")
+print("✓ Statistiques descriptives (mode, moyenne, médiane)")
+print("✓ Visualisations (boxplots, scatter matrix)")
+print("✓ Gestion des valeurs manquantes")
+print("✓ Normalisation (Min-Max et Z-score)")
